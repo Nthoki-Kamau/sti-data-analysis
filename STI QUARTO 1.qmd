@@ -1,0 +1,517 @@
+---
+title: "STI Analysis Assignment"
+author: "Kamau Nthoki"
+format: html
+editor: visual
+---
+
+# 1. Cleaning the data
+
+```{r}
+##working directory
+require(haven)
+setwd("C:/Users/Lilly Kamau/Desktop/RStudio")
+getwd()
+list.files()
+stidata<-read.csv("STIData.csv")
+```
+
+```{r}
+##cleaning data
+summary(stidata)
+##checking for missing values
+colSums(is.na(stidata))
+sum(is.na(stidata$Height ))
+stidata <- stidata[!is.na(stidata$Height ), ]
+# Replacing missing heights with the median height
+summary(stidata$Height )
+stidata$Height [is.na(stidata$Height )] <- 160
+```
+
+```{r}
+##checking for duplicates
+dups=duplicated(stidata$IdNumber)
+stidata$IdNumber[duplicated(stidata$IdNumber)]
+View(stidata[stidata$IdNumber==51,])
+stidata<-stidata[!(stidata$IdNumber==51 & stidata$A1Age==23),]
+View(stidata[stidata$IdNumber==51,])
+```
+
+```{r}
+##checking for inconsistencies
+summary(stidata)
+str(stidata)
+table(stidata$Sex )
+for (col in names(stidata)) {
+  cat("Unique values in", col, ":\n")
+  print(unique(stidata[[col]]))
+  cat("\n-----------------------\n")
+}
+stidata$N11Usedcondom <- tolower(stidata$N11Usedcondom)
+stidata$N12UseCondom  <- tolower(stidata$N12UseCondom)
+stidata$N13TakenAlcohol <- tolower(stidata$N13TakenAlcohol)
+stidata$N10givereceiveforsex <- tolower(stidata$N10givereceiveforsex)
+stidata$Sex <- tolower(stidata$Sex)
+
+stidata$Sex <- trimws(stidata$Sex)
+table(stidata$Height)
+```
+
+```{r}
+##creating categorical variables
+#Agecategory 
+dim(stidata)
+stidata$AgeCat<-NA
+stidata$AgeCat[stidata$A1Age >= 16 & stidata$A1Age <= 34] <- 1
+stidata$AgeCat[stidata$A1Age >= 35 & stidata$A1Age <= 64] <- 0
+stidata$AgeCat <- factor(stidata$AgeCat, levels = c(1, 0), labels = c("16–34 yrs", "35–64 yrs"))
+table(stidata$AgeCat)
+#creating BMI 
+stidata$BMI <- stidata$Weight / ((stidata$Height / 100)^2)
+stidata$BMI <- cut(stidata$BMI,
+                       breaks = c(0, 18.5, 24.9, 29.9, 34.9, Inf),
+                       labels = c("Underweight", "Normal", "Overweight", "Obese Class I", "Obese Class II+"),
+                       right = TRUE)
+summary(stidata$BMI)
+
+#Creating occupation
+stidata$Occupation<-NA
+stidata$Occupation[stidata$A2Occupation =="1 unemployed"|
+                     stidata$A2Occupation == "4 student"]=1
+stidata$Occupation[stidata$A2Occupation =="2 informal"|
+                     stidata$A2Occupation =="3 formal"]=0
+stidata$Occupation<-factor(stidata$Occupation, levels = c(1,0),labels = c("Unemployed", "Employed"))
+summary(stidata$Occupation)
+
+#creating churuch
+class(stidata)
+table(stidata$A3Church)
+stidata$Religion<-NA
+stidata$Religion[stidata$A3Church=="7 roman catholic"|
+                   stidata$A3Church=="2 apostolic"|
+                   stidata$A3Church=="3 methodist"|
+                   stidata$A3Church=="4 anglican"|
+                   stidata$A3Church=="5 pentecostal"]=1
+stidata$Religion[ stidata$A3Church=="6 atheist"|
+                    stidata$A3Church=="8 other"]=0
+
+stidata$Religion<-factor(stidata$Religion, levels = c(1,0),labels = c("Belivers", "Non-Belivers"))
+table(stidata$Religion)
+
+##creating marital status
+table(stidata$A5MaritalStatus)
+class(stidata$A5MaritalStatus)
+stidata$Marital_status<-NA
+stidata$Marital_status[stidata$A5MaritalStatus=="2 married"]=1
+stidata$Marital_status[stidata$Marital_status=="1 single"|
+                                 stidata$A5MaritalStatus=="5 widowed"|
+                                 stidata$A5MaritalStatus=="3 co-habiting"|
+                                 stidata$A5MaritalStatus=="4 divorcee"]=0
+
+stidata$Marital_status<-factor(stidata$Marital_status, levels = c(1,0), 
+                                       labels = c("Married", "Single"))
+table(stidata$Marital_status)
+
+##creating education level
+table(stidata$A4LevelOfEducation)
+class(stidata$A4LevelOfEducation)
+stidata$education_level<-NA                                 
+stidata$education_level[stidata$A4LevelOfEducation=="1 none"|
+                                stidata$A4LevelOfEducation=="2 primary"]=1;
+stidata$education_level[
+  stidata$A4LevelOfEducation=="3 secondary"| 
+    stidata$A4LevelOfEducation=="4 tertiary"]=0;
+
+stidata$education_level<-factor(stidata$education_level, 
+                                      levels = c(1,0),
+                                      labels = c("Primary & Below","Secondary & Above"))
+table(stidata$education_level)
+```
+
+```{r}
+#SAVING CLEAN DATASET
+write.csv(stidata, "stidata_cleaned.csv", row.names = FALSE)
+stidata <- read.csv("stidata_cleaned.csv")
+```
+
+# 2. Sociodemographic characteristics of study participants
+
+```{r}
+table(stidata$AgeCat)
+```
+
+```{r}
+library(dplyr)
+library(knitr)
+```
+
+```{r}
+##creating frequency tables
+create_table1 <- function(var, var_name) {
+  tbl <- table(var)
+  pct <- prop.table(tbl) * 100
+  data.frame(
+    Variable = var_name,
+    Category = names(tbl),
+    Frequency = as.vector(tbl),
+    Percentage = round(as.vector(pct), 1)
+  )
+}
+```
+
+```{r}
+# Create tables for each variable
+t_age       <- create_table1(stidata$AgeCat, "Age Group")
+t_Sex.1       <- create_table1(stidata$Sex.1, "Sex")
+t_occupation <- create_table1(stidata$Occupation, "Occupation")
+t_church    <- create_table1(stidata$Religion, "Church")
+t_education <- create_table1(stidata$education_level, "Education Level")
+t_marital   <- create_table1(stidata$Marital_status, "Marital Status")
+t_BMI       <- create_table1(stidata$BMI, "BMI")
+```
+
+```{r}
+# Combine all tables into one master table
+table1 <- bind_rows(
+  t_age, t_Sex.1, t_occupation, t_church, t_education, t_marital, t_BMI
+)
+```
+
+```{r}
+#Function to add total row for each group
+add_totals <- function(df) {
+  total_row <- data.frame(
+    Variable = unique(df$Variable),
+    Category = "Total",
+    Frequency = sum(df$Frequency),
+    Percentage = round(sum(df$Percentage), 1)
+  )
+  bind_rows(df, total_row)
+}
+```
+
+```{r}
+str(t_age)
+str(t_Sex.1)
+str(t_occupation)
+str(t_church)
+str(t_education)
+str(t_marital)
+str(t_BMI)
+```
+
+```{r}
+
+# Display the table
+kable(table1, caption = "Table 1: Sociodemographic Characteristics of Participants")
+```
+
+**Interpretation** Most participants were aged 16–34 years (85.8%) with a near-equal split between males (52%) and females (48%). The majority were employed (60%), believers (69.8%), and had secondary education or higher (88%). Most were married (81.3%). In terms of BMI, 43.1% had normal weight, 40.9% were underweight, and a smaller proportion were overweight or obese.
+
+```{r}
+#Histogram for Age
+library(ggplot2)
+ggplot(stidata, aes(x = A1Age)) +
+  geom_histogram(binwidth = 5, fill = "skyblue", color = "black") +
+  labs(title = "Age Distribution", x = "Age", y = "Count") +
+  theme_minimal()
+```
+
+### Interpretation
+
+The histogram shows the age distribution of participants in the study. The majority of individuals fall between 20 and 35 years, with a peak around the 25–30-year age group. This suggests that most respondents are young adults. The number of participants sharply declines after age 35, with very few individuals above 50 years. This right-skewed distribution indicates a younger population dominates the dataset, which may influence the observed patterns in STI prevalence and associated risk behaviors.
+
+```{r}
+table(stidata$Sex.1)
+```
+
+```{r}
+
+# Create frequency table from stidata$Sex.1
+t_Sex.1 <- as.data.frame(table(Category = stidata$Sex.1))
+
+# Rename columns
+colnames(t_Sex.1) <- c("Category", "Frequency")
+
+# Add percentages
+t_Sex.1$Percentage <- round(100 * t_Sex.1$Frequency / sum(t_Sex.1$Frequency), 1)
+
+```
+
+```{r}
+
+# Prepare data for pie
+Sex.1_pie <- t_Sex.1 %>%
+  filter(!is.na(Category)) %>%
+  mutate(label = paste0(Category, " (", Percentage, "%)"))
+
+```
+
+```{r}
+# Prepare data for pie chart
+t_Sex.1 <- stidata %>%
+  group_by(Sex.1) %>%
+  summarise(Frequency = n()) %>%
+  mutate(
+    Percentage = round(Frequency / sum(Frequency) * 100, 1),
+    Variable = "Sex",
+    Category = Sex.1
+  ) %>%
+  select(Variable, Category, Frequency, Percentage)
+```
+
+```{r}
+# Create data for pie chart
+Sex.1_pie <- t_Sex.1 %>%
+  filter(!is.na(Category)) %>%
+  mutate(label = paste0(Category, " (", Percentage, "%)"))
+```
+
+```{r}
+# Plot pie chart
+ggplot(Sex.1_pie, aes(x = "", y = Frequency, fill = Category)) +
+  geom_bar(width = 1, stat = "identity") +
+  coord_polar("y") +
+  labs(title = "Sex Distribution") +
+  theme_void() +
+  geom_text(aes(label = label), position = position_stack(vjust = 0.5)) +
+  scale_fill_brewer(palette = "Set3")
+```
+
+**Interpretation**
+
+The pie chart shows that 52% of respondents are male and 48% are female. This suggests a nearly equal gender distribution, which supports balanced analysis across sexes.
+
+# 3. Prevalence of sexually transmitted infections (STI case status)
+
+```{r}
+##prevalence of sexually transmitted infections (STI case status)
+class(stidata$CaseStatus)
+table(stidata$CaseStatus)
+stidata<-stidata[order(-stidata$CaseStatus),]
+View(stidata[stidata$CaseStatus==3,])
+stidata$CaseStatus[stidata$IdNumber==1 & stidata$A1Age==30]=1
+stidata$CaseStatus[stidata$IdNumber==31 & stidata$A1Age==23]=1
+table(stidata$CaseStatus)
+stidata$STI<-NA
+stidata$STI[stidata$CaseStatus==1]=1
+stidata$STI[stidata$CaseStatus==2]=0
+stidata$STI<-factor(stidata$STI, 
+                                 levels = c(1,0),
+                                 labels = c("Positive", "Negative"))
+table(stidata$STI)
+
+```
+
+```{r}
+# Frequency distribution of STI status
+prop.table(table(stidata$STI)) * 100
+# Pie chart
+sti_freq <- table(stidata$STI)
+
+pie(sti_freq,
+    col = c("maroon", "blue"),
+    main = "Prevalence of Sexually Transmitted Infections",
+    labels = paste(names(sti_freq), "\n", round(100 * sti_freq / sum(sti_freq), 1), "%"))
+```
+
+**Interpretation**
+
+The prevalence of sexually transmitted infections (STIs) among the study population is approximately 49.8% positive and 50.2% negative. This indicates that STI infection is almost evenly distributed across the sampled individuals. The results highlight the need for robust public health education and prevention programs, as about half of the population is affected
+
+# 4. Association between STI status and other factors
+
+```{r}
+
+names(stidata)
+# Load required packages
+library(gtsummary)
+library(dplyr)
+library(gt)  # for nice display in Viewer
+```
+
+```{r}
+# Create Table 2: Sociodemographic Characteristics and STI Status
+stidata %>%
+  select(STI, Sex.1, AgeCat, Marital_status, education_level, Occupation, Religion) %>%
+  tbl_summary(
+    by = STI,            
+    missing = "no",      
+    percent = "row"     
+  ) %>%
+  add_overall() %>%     
+  add_p() %>%            
+  modify_caption("**Table 2: Sociodemographic Characteristics and STI Status**") %>%
+  bold_labels() %>%
+  as_gt()            
+```
+
+**Interpretation:**\
+
+Unemployment was significantly associated with STI status (*p = 0.050*), with a higher STI prevalence among the unemployed (58%). Other variables like sex, age, education level, and religion did not show significant associations (all *p \> 0.05*).
+
+```{r}
+# Table 3: Social Capital and STI Status
+stidata %>%
+  select(STI, Belong, ReceiveHelp, D1BurialSociety, D1religiousgrp, D1savingsClub, 
+         D1tradersAssoc, D3FuneralAssistance, D3receivecredit, D3Education) %>%
+  tbl_summary(
+    by = STI,
+    missing = "no",
+    percent = "row"
+  ) %>%
+  add_overall() %>%
+  add_p() %>%
+  modify_caption("**Table 3: Social Capital and STI Status**") %>%
+  bold_labels() %>%
+  as_gt()
+
+```
+
+**Interpretation:**\
+
+Receiving help and funeral assistance were significantly associated with lower STI prevalence (*p = 0.028* and *p = 0.019*, respectively). Other forms of social group involvement did not show significant relationships with STI infection.
+
+```{r}
+# Table 4: Risky Sexual Behavior and STI Status
+stidata %>%
+  select(STI, N2SexDebut, N10givereceiveforsex, N11Usedcondom, N12UseCondom, 
+         N13TakenAlcohol, N14DoYouHave, SexPartner1year, SexPartner3month, SexPartnerLife3) %>%
+  tbl_summary(
+    by = STI,
+    missing = "no",
+    percent = "row"
+  ) %>%
+  add_overall() %>%
+  add_p() %>%
+  modify_caption("**Table 4: Risky Sexual Behavior and STI Status**") %>%
+  bold_labels() %>%
+  as_gt()
+```
+
+**Interpretation:**\
+Significant associations were observed between STI status and alcohol use, and having multiple sexual partners in the last 3 months, year, or lifetime (*all p \< 0.05*). Condom use and early sexual debut did not show significant associations.
+
+# 5. Risk factors for STI infection using multivariable logistic regression \[Table5\]
+
+statistically significant variables
+
+-   Occupation (p = 0.050)
+
+-   ReceiveHelp (p = 0.028)
+
+-   D3FuneralAssistance (p = 0.019)
+
+-   N13TakenAlcohol (p = 0.016)
+
+-   SexPartner1year (p \< 0.001)
+
+```{r}
+# Load dplyr
+library(dplyr)
+
+```
+
+```{r}
+# Fit multivariable logistic regression model
+model <- glm(STI ~ Occupation + ReceiveHelp + D3FuneralAssistance +
+             N13TakenAlcohol + SexPartner1year + SexPartner3month +
+             SexPartnerLife3,
+             data = stidata, family = binomial)
+```
+
+```{r}
+summary(model)
+```
+
+```{r}
+
+# Calculate Odds Ratios (OR),CI, P-values
+OR <- exp(coef(model))
+CI <- exp(confint(model))
+p_values <- summary(model)$coefficients[,4]
+
+# Combine into a table
+table5 <- data.frame(
+  Variable = names(OR),
+  OR = round(OR, 2),
+  `95% CI Lower` = round(CI[,1], 2),
+  `95% CI Upper` = round(CI[,2], 2),
+  `p-value` = round(p_values, 4)
+)
+
+# Remove intercept
+table5 <- table5[-1, ]
+
+# Print the results
+print(table5)
+```
+
+## Interpretation: Table 5: Multivariable Logistic Regression of Risk Factors for STI Infection
+
+This multivariable logistic regression model assessed the association between several potential risk factors and the likelihood of being diagnosed with a sexually transmitted infection (STI). The dependent variable was STI status (1 = Positive, 0 = Negative).
+
+-   Occupation (Unemployed): Individuals who were unemployed had significantly lower odds of STI infection compared to those employed (OR = 0.26, 95% CI: 0.12–0.56, *p* = 0.0007). This result is statistically significant and suggests employment may be associated with higher STI risk.
+
+-   Receive Help: Those who reported receiving help had reduced odds of STI infection (OR = 0.48), but this was not statistically significant (*p* = 0.6216), indicating no strong evidence of an association in this model.
+
+-   D3FuneralAssistance: This variable had an OR = 0.14, suggesting lower odds of STI infection among those who received funeral assistance, but the association was not statistically significant (*p* = 0.0981).
+
+-   N13TakenAlcohol (Don't know): This category yielded an extreme OR near zero with a very wide confidence interval, indicating unreliable estimation due to sparse data.
+
+-   SexPartner1year: Participants who had more than one sex partner in the past year had significantly lower odds of STI infection (OR = 0.30, 95% CI: 0.09–0.89, *p* = 0.0329). While this result is counterintuitive, it may reflect confounding factors or misclassification.
+
+-   SexPartner3month & SexPartnerLife3: These variables showed lower odds of STI infection but were not statistically significant (*p* \> 0.05).
+
+Only two factors Occupation (Unemployed) and SexPartner1year were statistically significant predictors of STI status at *p* \< 0.05. Being unemployed and having more than one partner in the past year are associated with reduced odds of STI infection.
+
+# 6. Additional data visualization
+
+```{r}
+library(ggplot2)
+```
+
+```{r}
+#box plot of BMI BY SEX
+ggplot(stidata, aes(x = Sex.1, y = BMI, fill = Sex.1)) +
+  geom_boxplot() +
+  labs(title = "Boxplot of BMI by Sex",
+       x = "Sex",
+       y = "Body Mass Index (BMI)") +
+  theme_minimal()
+```
+
+**Interpretation**
+
+The boxplot illustrates the distribution of Body Mass Index (BMI) across different sex groups. Both males and females are represented in all BMI categories including underweight, normal, overweight, obese class I, and obese class II+. This indicates that individuals from both sexes experience a wide range of BMI values which indicates that the presence of both undernutrition and overweight/obesity concerns. The distribution suggests that BMI related health issues are not limited to one sex and interventions should be inclusive of both males and females. Although normal BMI is common in both groups, the presence of higher obesity classes especially among females suggests a need for targeted health strategies.
+
+```{r}
+##BMI desity plot
+ggplot(stidata, aes(x = BMI, fill = Sex.1)) +
+  geom_density(alpha = 0.5) +
+  labs(title = "Density Plot of BMI",
+       x = "Body Mass Index (BMI)",
+       y = "Density") +
+  theme_minimal()
+```
+
+Interpretation:
+
+The peak in the "Normal" category indicates that most individuals have a healthy BMI especially among males. However, there is a noticeable spread into the overweight and obese categories with both males and females showing distributions extending into "Obese Class I" and "Obese Class II+". Females appear to have a slightly higher density in the higher BMI ranges compared to males, suggesting a possible greater prevalence of obesity among females in this sample. The warnings suggest that some categories had very few observations, potentially affecting the smoothness of the curves.
+
+```{r}
+#Faceted bar plots comparing STI prevalence by age group and sex.
+ggplot(stidata, aes(x =AgeCat, fill = STI)) +
+  geom_bar(position = "fill") +
+  facet_wrap(~Sex.1) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(title = "STI Prevalence by Age Group and Sex",
+       x = "Age Group",
+       y = "Proportion",
+       fill = "STI Status") +
+  theme_minimal()
+```
+
+**Interpretation**
+
+The bar plot displays the distribution of STI status by age group and sex. Among females, the STI positivity rate is slightly higher in the younger age group (16–34 years) compared to the older group (35–64 years). For males, a notable difference is observed: younger males (16–34 years) show a higher proportion of STI-positive cases compared to older males (35–64 years), who have the lowest positivity rate. This suggests that younger individuals, particularly males aged 16–34, may be at a higher risk of STI infection. These trends highlight the importance of age- and sex-specific interventions in STI prevention programs.
